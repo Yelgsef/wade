@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.dagster_home
+dbt_wade/target
+dbt_wade/logs
+tmp*

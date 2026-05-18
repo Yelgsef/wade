@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: gold_weather_feature_store
+    description: Clean hourly feature store for dashboard and anomaly detection.
+  - name: gold_extreme_events_daily
+    description: Daily city-level counts of sudden temperature jumps, high wind, and heavy rain events.
+  - name: gold_monthly_climate_delta
+    description: Year-over-year monthly temperature and humidity deltas by city.

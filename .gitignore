@@ -1,0 +1,21 @@
+.env
+.venv/
+.dagster_home/
+__pycache__/
+*.py[cod]
+tmp*/
+
+# Runtime data and generated artifacts
+lake/*
+!lake/.gitkeep
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+*.duckdb
+*.duckdb.wal
+
+# dbt artifacts
+dbt_wade/target/
+dbt_wade/logs/
+dbt_wade/.user.yml

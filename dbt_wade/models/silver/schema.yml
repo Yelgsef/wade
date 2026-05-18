@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: silver_weather_clean
+    description: Clean hourly weather observations with quality flags and deduplication.
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+      - name: timestamp_utc
+        tests:
+          - not_null
+      - name: is_quality_anomaly
+        description: True when physical validity rules fail; excluded from business metrics.

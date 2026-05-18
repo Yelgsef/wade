@@ -1,0 +1,7 @@
+dbt_wade:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('WADE_DUCKDB_PATH', '../data/wade.duckdb') }}"
+      threads: 4
