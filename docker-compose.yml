@@ -11,6 +11,18 @@ services:
     volumes:
       - minio-data:/data
 
+  createbuckets:
+    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin}; do
+        sleep 2;
+      done;
+      mc mb --ignore-existing local/${MINIO_BUCKET:-wade-lake};
+      "
+
   dagster:
     build: .
     user: "${UID:-1000}:${GID:-1000}"
@@ -22,11 +34,14 @@ services:
       - .env
     environment:
       DAGSTER_HOME: /opt/dagster/dagster_home
+      MINIO_ENDPOINT: http://minio:9000
+      WADE_STORAGE_BACKEND: ${WADE_STORAGE_BACKEND:-minio}
     volumes:
       - .:/app
       - ./.dagster_home:/opt/dagster/dagster_home
     depends_on:
-      - minio
+      createbuckets:
+        condition: service_completed_successfully
 
   dashboard:
     build: .
@@ -37,6 +52,8 @@ services:
       - "8501:8501"
     env_file:
       - .env
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
     volumes:
       - .:/app
 

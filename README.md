@@ -6,6 +6,12 @@ Real-time Weather Anomaly Detection Engine for Vietnam weather data.
 External APIs -> Bronze Lake -> Silver Clean Tables -> Gold Analytical Tables -> Dashboard / ML
 ```
 
+Docker mode stores bronze Parquet files in MinIO by default:
+
+```text
+External APIs -> MinIO bucket -> DuckDB/dbt -> Dashboard / ML
+```
+
 ## DEMO
 
 ![WADE Weather Dashboard demo](docs/assets/dashboard-demo.png)
@@ -16,7 +22,7 @@ External APIs -> Bronze Lake -> Silver Clean Tables -> Gold Analytical Tables ->
 wade/
   configs/          Static configuration, city registry, DuckDB extension setup
   ingestion/        Python API collectors and Parquet writer
-  lake/             Runtime data lake partitions: bronze/silver/gold
+  lake/             Optional local runtime data lake partitions
   dbt_wade/         DuckDB + dbt transformation project
   orchestration/    Dagster assets and jobs
   dashboard/        Streamlit dashboard
@@ -27,12 +33,43 @@ wade/
 
 ## Data Layers
 
-- `lake/bronze/weather/source=.../year=YYYY/month=MM/day=DD/`: raw API payload normalized only enough to write Parquet, with `source` and `ingested_at`.
+- `s3://wade-lake/bronze/weather/source=.../year=YYYY/month=MM/day=DD/`: raw API payload in MinIO as partitioned Parquet, with `source` and `ingested_at`.
+- `lake/bronze/weather/source=.../year=YYYY/month=MM/day=DD/`: optional local Parquet storage when `WADE_STORAGE_BACKEND=local`.
 - `dbt_wade/models/silver/`: clean hourly weather observations, UTC timestamps, physical validity flags, and deduplication by `(city_id, timestamp_utc)`.
 - `dbt_wade/models/gold/`: analytical outputs for dashboard and ML:
   - `gold_weather_feature_store`: hourly ML feature store with rolling weather baselines, lag and delta features, seasonal city/hour normal values, z-scores, cyclical time features, and source lineage.
   - `gold_extreme_events_daily`: daily count of sudden temperature jumps, high wind, and heavy rain.
   - `gold_monthly_climate_delta`: year-over-year monthly temperature and humidity deltas.
+
+## Object Storage
+
+WADE supports two bronze storage backends:
+
+```env
+WADE_STORAGE_BACKEND=minio
+```
+
+Uses MinIO/S3-compatible object storage. This is the default in Docker Compose. In Docker, services talk to MinIO through:
+
+```env
+MINIO_ENDPOINT=http://minio:9000
+MINIO_BUCKET=wade-lake
+```
+
+From your host machine, MinIO is available at:
+
+```text
+MinIO API: http://localhost:9000
+MinIO console: http://localhost:9001
+```
+
+```env
+WADE_STORAGE_BACKEND=local
+```
+
+Uses the local `lake/` folder instead. This is useful for quick local scripts outside Docker.
+
+The `createbuckets` Compose service creates the `wade-lake` bucket automatically. DuckDB/dbt loads the `httpfs` extension and reads bronze Parquet from MinIO when `WADE_STORAGE_BACKEND=minio`.
 
 ## Anomaly Detection
 
@@ -74,6 +111,7 @@ Add `OPENWEATHER_API_KEY` to `.env` if you want current weather ingestion.
 Optional settings:
 
 ```env
+WADE_STORAGE_BACKEND=minio
 WADE_BACKFILL_START_DATE=2025-01-01
 WADE_ANOMALY_CONTAMINATION=0.03
 ```
@@ -109,7 +147,7 @@ python -m ml.score_anomalies
 Run orchestration and dashboard:
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
 Dagster: <http://localhost:3000>

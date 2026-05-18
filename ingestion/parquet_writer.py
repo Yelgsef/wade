@@ -1,7 +1,59 @@
+import os
 from pathlib import Path
 from datetime import datetime, timezone
+from urllib.parse import urlparse
+
 import pyarrow as pa
+import pyarrow.fs as pafs
 import pyarrow.parquet as pq
+
+
+def minio_filesystem() -> pafs.S3FileSystem:
+    endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+    parsed = urlparse(endpoint)
+    endpoint_override = parsed.netloc or parsed.path
+    scheme = parsed.scheme or "http"
+
+    return pafs.S3FileSystem(
+        access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+        secret_key=os.getenv("MINIO_SECRET_KEY", "minioadmin"),
+        endpoint_override=endpoint_override,
+        scheme=scheme,
+        region=os.getenv("MINIO_REGION", "us-east-1"),
+    )
+
+
+def partition_key(source: str, now: datetime) -> str:
+    return (
+        "bronze"
+        f"/weather/source={source}"
+        f"/year={now.year}"
+        f"/month={now.month:02d}"
+        f"/day={now.day:02d}"
+        f"/weather_{now.strftime('%Y%m%d_%H%M%S')}.parquet"
+    )
+
+
+def write_minio_parquet(table: pa.Table, source: str, now: datetime) -> str:
+    bucket = os.getenv("MINIO_BUCKET", "wade-lake")
+    key = partition_key(source, now)
+    filesystem = minio_filesystem()
+    filesystem.create_dir(bucket, recursive=True)
+    output_path = f"{bucket}/{key}"
+
+    pq.write_table(table, output_path, filesystem=filesystem)
+
+    return f"s3://{output_path}"
+
+
+def write_local_parquet(table: pa.Table, base_path: str, source: str, now: datetime) -> str:
+    key = partition_key(source, now)
+    output_file = Path(base_path) / key
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    pq.write_table(table, output_file)
+
+    return str(output_file)
 
 
 def write_partitioned_parquet(records, base_path: str, source: str):
@@ -19,22 +71,17 @@ def write_partitioned_parquet(records, base_path: str, source: str):
         row["ingestion_day"] = now.day
 
     table = pa.Table.from_pylist(records)
+    storage_backend = os.getenv("WADE_STORAGE_BACKEND", "local").lower()
 
-    output_dir = (
-        Path(base_path)
-        / "bronze"
-        / "weather"
-        / f"source={source}"
-        / f"year={now.year}"
-        / f"month={now.month:02d}"
-        / f"day={now.day:02d}"
-    )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_file = output_dir / f"weather_{now.strftime('%Y%m%d_%H%M%S')}.parquet"
-
-    pq.write_table(table, output_file)
+    if storage_backend == "minio":
+        output_file = write_minio_parquet(table, source, now)
+    elif storage_backend == "local":
+        output_file = write_local_parquet(table, base_path, source, now)
+    else:
+        raise ValueError(
+            "Unsupported WADE_STORAGE_BACKEND. Expected 'local' or 'minio', "
+            f"got '{storage_backend}'."
+        )
 
     print(f"Wrote {len(records)} records to {output_file}")
-    return str(output_file)
+    return output_file
