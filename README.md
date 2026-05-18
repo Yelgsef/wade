@@ -6,6 +6,10 @@ Real-time Weather Anomaly Detection Engine for Vietnam weather data.
 External APIs -> Bronze Lake -> Silver Clean Tables -> Gold Analytical Tables -> Dashboard / ML
 ```
 
+## DEMO
+
+![WADE Weather Dashboard demo](docs/assets/dashboard-demo.png)
+
 ## Project Structure
 
 ```text
