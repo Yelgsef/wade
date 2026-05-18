@@ -1,5 +1,6 @@
 .env
 .venv/
+.vscode/
 .dagster_home/
 __pycache__/
 *.py[cod]
