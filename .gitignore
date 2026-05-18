@@ -2,6 +2,7 @@
 .venv/
 .vscode/
 .dagster_home/
+.duckdb/
 __pycache__/
 *.py[cod]
 tmp*/

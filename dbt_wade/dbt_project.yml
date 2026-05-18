@@ -9,8 +9,6 @@ macro-paths: ["macros"]
 
 models:
   dbt_wade:
-    +pre-hook:
-      - "{{ configure_minio() }}"
     bronze:
       +materialized: view
     silver:

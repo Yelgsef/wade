@@ -24,12 +24,17 @@ def open_meteo_backfill_raw(context: AssetExecutionContext) -> str:
         output_base_path=os.getenv("WADE_LAKE_PATH", "lake"),
         start_date=start_date,
         end_date=end_date,
+        sleep_seconds=float(os.getenv("WADE_OPEN_METEO_SLEEP_SECONDS", "1.0")),
     )
-    context.log.info("Backfilled hourly Open-Meteo data from %s to %s.", start_date, end_date)
+    context.log.info(
+        "Backfilled hourly Open-Meteo data from %s to %s.",
+        start_date,
+        end_date,
+    )
     return os.getenv("WADE_LAKE_PATH", "lake")
 
 
-@asset(deps=[openweather_current_raw, open_meteo_backfill_raw])
+@asset
 def dbt_models(context: AssetExecutionContext) -> None:
     result = subprocess.run(
         ["dbt", "run", "--project-dir", "dbt_wade", "--profiles-dir", "dbt_wade"],

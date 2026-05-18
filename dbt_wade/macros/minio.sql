@@ -1,17 +1,16 @@
 {% macro minio_endpoint_host() -%}
-    {{ env_var('MINIO_ENDPOINT', 'http://localhost:9000')
+    {{ env_var('MINIO_INTERNAL_ENDPOINT', env_var('MINIO_ENDPOINT', 'http://localhost:9000'))
         | replace('http://', '')
         | replace('https://', '') }}
 {%- endmacro %}
 
 {% macro minio_use_ssl() -%}
-    {{ 'true' if env_var('MINIO_ENDPOINT', 'http://localhost:9000').startswith('https://') else 'false' }}
+    {{ 'true' if env_var('MINIO_INTERNAL_ENDPOINT', env_var('MINIO_ENDPOINT', 'http://localhost:9000')).startswith('https://') else 'false' }}
 {%- endmacro %}
 
 {% macro configure_minio() %}
     {% if env_var('WADE_STORAGE_BACKEND', 'local') | lower == 'minio' %}
-        INSTALL httpfs;
-        LOAD httpfs;
+        SET extension_directory='{{ env_var("DUCKDB_EXTENSION_DIRECTORY", "/app/.duckdb/extensions") }}';
         SET s3_endpoint='{{ minio_endpoint_host() }}';
         SET s3_access_key_id='{{ env_var("MINIO_ACCESS_KEY", "minioadmin") }}';
         SET s3_secret_access_key='{{ env_var("MINIO_SECRET_KEY", "minioadmin") }}';

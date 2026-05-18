@@ -116,6 +116,8 @@ WADE_BACKFILL_START_DATE=2025-01-01
 WADE_ANOMALY_CONTAMINATION=0.03
 ```
 
+`WADE_BACKFILL_START_DATE` controls the Open-Meteo historical backfill start date. Open-Meteo can return `429 Too Many Requests` when you run too many historical loads in the same day, so treat full backfills as occasional/manual runs.
+
 ## Run Locally
 
 Backfill historical weather from Open-Meteo:
@@ -151,6 +153,13 @@ docker compose up --build
 ```
 
 Dagster: <http://localhost:3000>
+
+Dagster jobs:
+
+- `weather_refresh_job`: scheduled hourly; fetches current OpenWeather data and runs dbt.
+- `weather_backfill_job`: manual; runs the Open-Meteo historical backfill and then dbt.
+
+Use `weather_backfill_job` for one-time historical loads. Keep the hourly schedule on `weather_refresh_job` so Open-Meteo is not called repeatedly for the full historical range.
 
 Streamlit: <http://localhost:8501>
 

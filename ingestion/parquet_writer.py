@@ -1,25 +1,27 @@
 import os
 import time
+from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+from minio import Minio
 import pyarrow as pa
-import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 
 
-def minio_filesystem() -> pafs.S3FileSystem:
-    endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+def minio_client() -> Minio:
+    endpoint = os.getenv("MINIO_INTERNAL_ENDPOINT") or os.getenv(
+        "MINIO_ENDPOINT", "http://localhost:9000"
+    )
     parsed = urlparse(endpoint)
-    endpoint_override = parsed.netloc or parsed.path
-    scheme = parsed.scheme or "http"
+    endpoint_host = parsed.netloc or parsed.path
 
-    return pafs.S3FileSystem(
+    return Minio(
+        endpoint_host,
         access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
         secret_key=os.getenv("MINIO_SECRET_KEY", "minioadmin"),
-        endpoint_override=endpoint_override,
-        scheme=scheme,
+        secure=(parsed.scheme == "https"),
         region=os.getenv("MINIO_REGION", "us-east-1"),
     )
 
@@ -31,29 +33,37 @@ def partition_key(source: str, now: datetime) -> str:
         f"/year={now.year}"
         f"/month={now.month:02d}"
         f"/day={now.day:02d}"
-        f"/weather_{now.strftime('%Y%m%d_%H%M%S')}.parquet"
+        f"/weather_{now.strftime('%Y%m%d_%H%M%S_%f')}.parquet"
     )
 
 
 def write_minio_parquet(table: pa.Table, source: str, now: datetime) -> str:
     bucket = os.getenv("MINIO_BUCKET", "wade-lake")
     key = partition_key(source, now)
-    output_path = f"{bucket}/{key}"
     max_attempts = int(os.getenv("MINIO_WRITE_MAX_ATTEMPTS", "5"))
     retry_delay_seconds = float(os.getenv("MINIO_WRITE_RETRY_DELAY_SECONDS", "5"))
 
     for attempt in range(1, max_attempts + 1):
         try:
-            filesystem = minio_filesystem()
-            filesystem.create_dir(bucket, recursive=True)
-            pq.write_table(table, output_path, filesystem=filesystem)
+            buffer = BytesIO()
+            pq.write_table(table, buffer)
+            buffer.seek(0)
+
+            client = minio_client()
+            client.put_object(
+                bucket,
+                key,
+                buffer,
+                length=buffer.getbuffer().nbytes,
+                content_type="application/vnd.apache.parquet",
+            )
             break
-        except OSError:
+        except Exception:
             if attempt == max_attempts:
                 raise
             time.sleep(retry_delay_seconds)
 
-    return f"s3://{output_path}"
+    return f"s3://{bucket}/{key}"
 
 
 def write_local_parquet(table: pa.Table, base_path: str, source: str, now: datetime) -> str:

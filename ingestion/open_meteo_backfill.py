@@ -1,4 +1,6 @@
+import os
 import time
+
 import requests
 import pandas as pd
 
@@ -34,12 +36,31 @@ def fetch_open_meteo_history(city, start_date: str, end_date: str):
         "timezone": "UTC",
     }
 
-    response = requests.get(
-        OPEN_METEO_ARCHIVE_URL,
-        params=params,
-        timeout=60,
-    )
-    response.raise_for_status()
+    max_attempts = int(os.getenv("WADE_OPEN_METEO_MAX_ATTEMPTS", "5"))
+    base_delay_seconds = float(os.getenv("WADE_OPEN_METEO_RETRY_DELAY_SECONDS", "30"))
+
+    for attempt in range(1, max_attempts + 1):
+        response = requests.get(
+            OPEN_METEO_ARCHIVE_URL,
+            params=params,
+            timeout=60,
+        )
+
+        if response.status_code != 429:
+            response.raise_for_status()
+            break
+
+        if attempt == max_attempts:
+            response.raise_for_status()
+
+        retry_after = response.headers.get("Retry-After")
+        delay_seconds = (
+            float(retry_after)
+            if retry_after and retry_after.isdigit()
+            else base_delay_seconds * attempt
+        )
+        print(f"  -> Rate limited by Open-Meteo. Retrying in {delay_seconds:.0f}s.")
+        time.sleep(delay_seconds)
 
     payload = response.json()
     hourly = payload.get("hourly", {})
@@ -81,6 +102,7 @@ def run_backfill(
     cities = pd.read_csv(cities_csv)
 
     all_records = []
+    failed_cities = []
 
     for _, city in cities.iterrows():
         city_name = city["city_name"]
@@ -93,8 +115,14 @@ def run_backfill(
 
         except Exception as exc:
             print(f"  -> Failed for {city_name}: {exc}")
+            failed_cities.append(city_name)
 
         time.sleep(sleep_seconds)
+
+    if failed_cities:
+        raise RuntimeError(
+            "Open-Meteo backfill failed for cities: " + ", ".join(failed_cities)
+        )
 
     return write_partitioned_parquet(
         all_records,

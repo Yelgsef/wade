@@ -34,7 +34,9 @@ services:
       - .env
     environment:
       DAGSTER_HOME: /opt/dagster/dagster_home
+      DUCKDB_EXTENSION_DIRECTORY: /app/.duckdb/extensions
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
       WADE_STORAGE_BACKEND: ${WADE_STORAGE_BACKEND:-minio}
     volumes:
       - .:/app
@@ -53,7 +55,9 @@ services:
     env_file:
       - .env
     environment:
+      DUCKDB_EXTENSION_DIRECTORY: /app/.duckdb/extensions
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
     volumes:
       - .:/app
 

@@ -5,3 +5,14 @@ dbt_wade:
       type: duckdb
       path: "{{ env_var('WADE_DUCKDB_PATH', '../data/wade.duckdb') }}"
       threads: 4
+      config_options:
+        extension_directory: "{{ env_var('DUCKDB_EXTENSION_DIRECTORY', '../.duckdb/extensions') }}"
+      extensions:
+        - httpfs
+      settings:
+        s3_endpoint: "{{ env_var('MINIO_INTERNAL_ENDPOINT', env_var('MINIO_ENDPOINT', 'http://localhost:9000')) | replace('http://', '') | replace('https://', '') }}"
+        s3_access_key_id: "{{ env_var('MINIO_ACCESS_KEY', 'minioadmin') }}"
+        s3_secret_access_key: "{{ env_var('MINIO_SECRET_KEY', 'minioadmin') }}"
+        s3_region: "{{ env_var('MINIO_REGION', 'us-east-1') }}"
+        s3_use_ssl: "{{ 'true' if env_var('MINIO_INTERNAL_ENDPOINT', env_var('MINIO_ENDPOINT', 'http://localhost:9000')).startswith('https://') else 'false' }}"
+        s3_url_style: path
