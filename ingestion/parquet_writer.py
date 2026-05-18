@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -37,11 +38,20 @@ def partition_key(source: str, now: datetime) -> str:
 def write_minio_parquet(table: pa.Table, source: str, now: datetime) -> str:
     bucket = os.getenv("MINIO_BUCKET", "wade-lake")
     key = partition_key(source, now)
-    filesystem = minio_filesystem()
-    filesystem.create_dir(bucket, recursive=True)
     output_path = f"{bucket}/{key}"
+    max_attempts = int(os.getenv("MINIO_WRITE_MAX_ATTEMPTS", "5"))
+    retry_delay_seconds = float(os.getenv("MINIO_WRITE_RETRY_DELAY_SECONDS", "5"))
 
-    pq.write_table(table, output_path, filesystem=filesystem)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            filesystem = minio_filesystem()
+            filesystem.create_dir(bucket, recursive=True)
+            pq.write_table(table, output_path, filesystem=filesystem)
+            break
+        except OSError:
+            if attempt == max_attempts:
+                raise
+            time.sleep(retry_delay_seconds)
 
     return f"s3://{output_path}"
 
