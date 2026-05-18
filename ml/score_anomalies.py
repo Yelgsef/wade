@@ -19,7 +19,14 @@ def main() -> None:
     with duckdb.connect(str(DB_PATH), read_only=True) as con:
         df = con.execute("select * from gold_weather_feature_store").df()
 
-    scored = df.dropna(subset=features).copy()
+    missing_features = sorted(set(features) - set(df.columns))
+    if missing_features:
+        raise RuntimeError(
+            "Missing feature columns. Run dbt and retrain the model before scoring: "
+            + ", ".join(missing_features)
+        )
+
+    scored = df.copy()
     scored["anomaly_score"] = model.decision_function(scored[features])
     scored["is_anomaly"] = model.predict(scored[features]) == -1
 

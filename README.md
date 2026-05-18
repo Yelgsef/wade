@@ -1,6 +1,6 @@
 # WADE
 
-Real-time Weather Anomaly Detection Engine for Vietnam weather data. The project follows the flow in `../docs/docs.md`:
+Real-time Weather Anomaly Detection Engine for Vietnam weather data.
 
 ```text
 External APIs -> Bronze Lake -> Silver Clean Tables -> Gold Analytical Tables -> Dashboard / ML
@@ -26,9 +26,34 @@ wade/
 - `lake/bronze/weather/source=.../year=YYYY/month=MM/day=DD/`: raw API payload normalized only enough to write Parquet, with `source` and `ingested_at`.
 - `dbt_wade/models/silver/`: clean hourly weather observations, UTC timestamps, physical validity flags, and deduplication by `(city_id, timestamp_utc)`.
 - `dbt_wade/models/gold/`: analytical outputs for dashboard and ML:
-  - `gold_weather_feature_store`: rolling 24h temperature, lag features, calendar features.
+  - `gold_weather_feature_store`: hourly ML feature store with rolling weather baselines, lag and delta features, seasonal city/hour normal values, z-scores, cyclical time features, and source lineage.
   - `gold_extreme_events_daily`: daily count of sudden temperature jumps, high wind, and heavy rain.
   - `gold_monthly_climate_delta`: year-over-year monthly temperature and humidity deltas.
+
+## Anomaly Detection
+
+The anomaly model is an Isolation Forest trained on the `gold_weather_feature_store` table. Feature engineering is handled in dbt so the dashboard and ML code read from the same curated feature layer.
+
+Current feature groups include:
+
+- Current observations: temperature, humidity, pressure, wind speed, and rain.
+- Rolling context: 24h temperature min/max/std/range, 24h rain totals, 24h humidity and pressure averages, and 7d temperature/wind baselines.
+- Short-term movement: 1h and 2h temperature deltas, plus humidity, pressure, and wind deltas.
+- Local seasonal context: city + month + hour averages and z-scores for temperature, humidity, pressure, wind, and rain.
+- Calendar encoding: hour, day of week, month, weekend flag, and cyclical sine/cosine hour/month features.
+
+Training uses median imputation, standard scaling, and a configurable anomaly rate:
+
+```env
+WADE_ANOMALY_CONTAMINATION=0.03
+```
+
+Model and scored anomaly outputs are runtime artifacts:
+
+```text
+models/isolation_forest.joblib
+data/weather_anomalies.parquet
+```
 
 ## Setup
 
@@ -41,6 +66,13 @@ pip install -r requirements.txt
 ```
 
 Add `OPENWEATHER_API_KEY` to `.env` if you want current weather ingestion.
+
+Optional settings:
+
+```env
+WADE_BACKFILL_START_DATE=2025-01-01
+WADE_ANOMALY_CONTAMINATION=0.03
+```
 
 ## Run Locally
 
