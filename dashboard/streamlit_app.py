@@ -8,6 +8,8 @@ import streamlit as st
 
 
 DB_PATH = Path(os.getenv("WADE_DUCKDB_PATH", "data/wade.duckdb"))
+LOCAL_TIMEZONE = "Asia/Ho_Chi_Minh"
+LOCAL_TIME_LABEL = "ICT"
 
 
 st.set_page_config(page_title="WADE Weather Dashboard", layout="wide")
@@ -41,7 +43,7 @@ st.markdown(
 
 
 @st.cache_data(show_spinner="Loading weather features")
-def load_features() -> pd.DataFrame:
+def load_features(db_mtime_ns: int) -> pd.DataFrame:
     if not DB_PATH.exists():
         return pd.DataFrame()
 
@@ -77,7 +79,7 @@ def load_features() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner="Loading extreme events")
-def load_extreme_events() -> pd.DataFrame:
+def load_extreme_events(db_mtime_ns: int) -> pd.DataFrame:
     if not DB_PATH.exists():
         return pd.DataFrame()
 
@@ -105,22 +107,27 @@ def latest_delta(frame: pd.DataFrame, column: str) -> str | None:
     return format_number(delta, " vs prev", 1)
 
 
-df = load_features()
+db_mtime_ns = DB_PATH.stat().st_mtime_ns if DB_PATH.exists() else 0
+
+df = load_features(db_mtime_ns)
 if df.empty:
     st.title("WADE Weather Dashboard")
     st.info("No modeled weather data yet. Run ingestion and dbt first.")
     st.stop()
 
-events = load_extreme_events()
-df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"])
-df["observed_date"] = pd.to_datetime(df["observed_date"]).dt.date
+events = load_extreme_events(db_mtime_ns)
+df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
+df["timestamp_ict"] = (
+    df["timestamp_utc"].dt.tz_convert(LOCAL_TIMEZONE).dt.tz_localize(None)
+)
+df["observed_date_ict"] = df["timestamp_ict"].dt.date
 df["rain_mm"] = df["rain_mm"].fillna(0)
 
 if not events.empty:
-    events["observed_date"] = pd.to_datetime(events["observed_date"]).dt.date
+    events["observed_date_ict"] = pd.to_datetime(events["observed_date"]).dt.date
 
-min_date = df["timestamp_utc"].dt.date.min()
-max_date = df["timestamp_utc"].dt.date.max()
+min_date = df["observed_date_ict"].min()
+max_date = df["observed_date_ict"].max()
 default_start = max(min_date, max_date - timedelta(days=30))
 
 with st.sidebar:
@@ -151,15 +158,17 @@ with st.sidebar:
 
     st.divider()
     st.caption(f"Rows: {len(df):,}")
-    st.caption(f"Updated: {df['timestamp_utc'].max():%Y-%m-%d %H:%M UTC}")
+    st.caption(
+        f"Updated: {df['timestamp_ict'].max():%Y-%m-%d %H:%M} {LOCAL_TIME_LABEL}"
+    )
 
 if start_date > end_date:
     st.warning("Start date is after end date, so the dates were swapped.")
     start_date, end_date = end_date, start_date
 
 filtered = df[
-    (df["timestamp_utc"].dt.date >= start_date)
-    & (df["timestamp_utc"].dt.date <= end_date)
+    (df["observed_date_ict"] >= start_date)
+    & (df["observed_date_ict"] <= end_date)
     & (df["source"].isin(selected_sources))
 ].copy()
 
@@ -170,18 +179,20 @@ if city_df.empty:
     st.stop()
 
 latest = city_df.iloc[-1]
-previous_day = city_df[city_df["timestamp_utc"] >= latest["timestamp_utc"] - pd.Timedelta(hours=24)]
+previous_day = city_df[
+    city_df["timestamp_ict"] >= latest["timestamp_ict"] - pd.Timedelta(hours=24)
+]
 period_events = pd.DataFrame()
 if not events.empty:
     period_events = events[
-        (events["observed_date"] >= start_date)
-        & (events["observed_date"] <= end_date)
+        (events["observed_date_ict"] >= start_date)
+        & (events["observed_date_ict"] <= end_date)
     ].copy()
 
 st.title("WADE Weather Dashboard")
 st.caption(
     f"{selected_city} | {start_date} to {end_date} | "
-    f"{len(city_df):,} hourly observations"
+    f"{len(city_df):,} hourly observations | times shown in {LOCAL_TIME_LABEL}"
 )
 
 metric_cols = st.columns(5)
@@ -217,28 +228,28 @@ with overview_tab:
 
     with left_col:
         st.subheader("Temperature")
-        temperature_chart = city_df.set_index("timestamp_utc")[
+        temperature_chart = city_df.set_index("timestamp_ict")[
             ["temperature_c", "rolling_avg_temp_24h"]
         ]
         st.line_chart(temperature_chart, height=340)
 
     with right_col:
         st.subheader("Last 24 Hours")
-        last_24h = previous_day.set_index("timestamp_utc")
+        last_24h = previous_day.set_index("timestamp_ict")
         st.area_chart(last_24h[["rain_mm"]], height=155)
         st.line_chart(last_24h[["wind_speed_ms"]], height=155)
 
     daily_city = (
-        city_df.groupby("observed_date", as_index=False)
+        city_df.groupby("observed_date_ict", as_index=False)
         .agg(
             avg_temp_c=("temperature_c", "mean"),
             max_temp_c=("temperature_c", "max"),
             rain_mm=("rain_mm", "sum"),
             avg_wind_ms=("wind_speed_ms", "mean"),
         )
-        .sort_values("observed_date")
+        .sort_values("observed_date_ict")
     )
-    daily_city = daily_city.set_index("observed_date")
+    daily_city = daily_city.set_index("observed_date_ict")
 
     st.subheader("Daily Summary")
     summary_cols = st.columns(2)
@@ -254,9 +265,11 @@ with trends_tab:
     )
     compare_df = filtered[filtered["city_name"].isin(compare_cities)]
     daily_compare = (
-        compare_df.groupby(["observed_date", "city_name"], as_index=False)["temperature_c"]
+        compare_df.groupby(["observed_date_ict", "city_name"], as_index=False)[
+            "temperature_c"
+        ]
         .mean()
-        .pivot(index="observed_date", columns="city_name", values="temperature_c")
+        .pivot(index="observed_date_ict", columns="city_name", values="temperature_c")
         .sort_index()
     )
     st.subheader("Average Temperature by City")
@@ -318,7 +331,7 @@ with events_tab:
             if selected_events.empty:
                 st.info("No extreme events for this city.")
             else:
-                event_series = selected_events.set_index("observed_date")[
+                event_series = selected_events.set_index("observed_date_ict")[
                     [
                         "sudden_temp_jump_count",
                         "high_wind_count",
@@ -329,7 +342,7 @@ with events_tab:
 
 with map_tab:
     latest_by_city = (
-        filtered.sort_values("timestamp_utc")
+        filtered.sort_values("timestamp_ict")
         .groupby("city_name", as_index=False)
         .tail(1)
         .rename(columns={"lat": "latitude", "lon": "longitude"})
@@ -349,7 +362,7 @@ with map_tab:
             latest_by_city[
                 [
                     "city_name",
-                    "timestamp_utc",
+                    "timestamp_ict",
                     "temperature_c",
                     "humidity_pct",
                     "wind_speed_ms",
@@ -366,6 +379,7 @@ with data_tab:
     st.dataframe(
         city_df[
             [
+                "timestamp_ict",
                 "timestamp_utc",
                 "temperature_c",
                 "rolling_avg_temp_24h",
@@ -375,7 +389,7 @@ with data_tab:
                 "rain_mm",
                 "source",
             ]
-        ].sort_values("timestamp_utc", ascending=False),
+        ].sort_values("timestamp_ict", ascending=False),
         use_container_width=True,
         hide_index=True,
         height=480,

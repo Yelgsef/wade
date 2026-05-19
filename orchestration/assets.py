@@ -8,6 +8,16 @@ from ingestion.open_meteo_backfill import run_backfill
 from ingestion.openweather_current import main as fetch_openweather_current
 
 
+def run_dbt_models(context: AssetExecutionContext) -> None:
+    result = subprocess.run(
+        ["dbt", "run", "--project-dir", "dbt_wade", "--profiles-dir", "dbt_wade"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    context.log.info(result.stdout)
+
+
 @asset(retry_policy=RetryPolicy(max_retries=3, delay=300))
 def openweather_current_raw(context: AssetExecutionContext) -> str:
     fetch_openweather_current()
@@ -34,12 +44,11 @@ def open_meteo_backfill_raw(context: AssetExecutionContext) -> str:
     return os.getenv("WADE_LAKE_PATH", "lake")
 
 
-@asset
-def dbt_models(context: AssetExecutionContext) -> None:
-    result = subprocess.run(
-        ["dbt", "run", "--project-dir", "dbt_wade", "--profiles-dir", "dbt_wade"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    context.log.info(result.stdout)
+@asset(deps=[openweather_current_raw])
+def dbt_models_after_current(context: AssetExecutionContext) -> None:
+    run_dbt_models(context)
+
+
+@asset(deps=[open_meteo_backfill_raw])
+def dbt_models_after_backfill(context: AssetExecutionContext) -> None:
+    run_dbt_models(context)

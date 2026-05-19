@@ -3,12 +3,12 @@ from dagster import DefaultScheduleStatus, ScheduleDefinition, define_asset_job
 
 weather_refresh_job = define_asset_job(
     "weather_refresh_job",
-    selection=["openweather_current_raw", "dbt_models"],
+    selection=["openweather_current_raw", "dbt_models_after_current"],
 )
 
 weather_backfill_job = define_asset_job(
     "weather_backfill_job",
-    selection=["open_meteo_backfill_raw", "dbt_models"],
+    selection=["open_meteo_backfill_raw", "dbt_models_after_backfill"],
 )
 
 hourly_weather_refresh_schedule = ScheduleDefinition(
