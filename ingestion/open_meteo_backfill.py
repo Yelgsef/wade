@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timezone
 
 import requests
 import pandas as pd
@@ -20,6 +21,7 @@ def safe_get_list(hourly: dict, key: str, length: int):
 
 
 def fetch_open_meteo_history(city, start_date: str, end_date: str):
+    fetched_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     params = {
         "latitude": city["lat"],
         "longitude": city["lon"],
@@ -75,6 +77,10 @@ def fetch_open_meteo_history(city, start_date: str, end_date: str):
     records = []
 
     for i, ts in enumerate(times):
+        timestamp_utc = datetime.fromisoformat(ts)
+        if timestamp_utc > fetched_at_utc:
+            continue
+
         records.append({
             "timestamp": ts,
             "city_id": int(city["city_id"]),

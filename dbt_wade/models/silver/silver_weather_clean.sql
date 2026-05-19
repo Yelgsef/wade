@@ -26,6 +26,10 @@ quality_checked as (
     from normalized
     where city_id is not null
       and timestamp_utc is not null
+      and (
+          ingested_at_utc is null
+          or timestamp_utc <= ingested_at_utc
+      )
 ),
 
 deduped as (
