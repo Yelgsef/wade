@@ -3,10 +3,9 @@ import time
 from datetime import datetime, timezone
 
 import requests
-import pandas as pd
 
 from ingestion.parquet_writer import write_partitioned_parquet
-
+from ingestion.city_registry import load_cities
 
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
@@ -48,7 +47,7 @@ def fetch_open_meteo_history(city, start_date: str, end_date: str):
             timeout=60,
         )
 
-        if response.status_code != 429:
+        if response.status_code != 429: # Not rate limited
             response.raise_for_status()
             break
 
@@ -105,7 +104,7 @@ def run_backfill(
     end_date: str,
     sleep_seconds: float = 0.2,
 ):
-    cities = pd.read_csv(cities_csv)
+    cities = load_cities(cities_csv)
 
     all_records = []
     failed_cities = []

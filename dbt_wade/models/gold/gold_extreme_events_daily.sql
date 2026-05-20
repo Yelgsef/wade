@@ -10,7 +10,7 @@ with hourly_events as (
         wind_speed_ms,
         rain_mm,
         temperature_c - temp_lag_2h > 5 as sudden_temp_jump,
-        wind_speed_ms > rolling_avg_wind_7d * 1.3 as high_wind_vs_week,
+        wind_speed_ms > rolling_avg_wind_7d * 3 as high_wind_vs_week,
         rain_mm >= 50 as heavy_rain_hour
     from {{ ref('gold_weather_feature_store') }}
 )

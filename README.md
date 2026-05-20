@@ -12,6 +12,35 @@ Docker mode stores bronze Parquet files in MinIO by default:
 External APIs -> MinIO bucket -> DuckDB/dbt -> Dashboard / ML
 ```
 
+## Architecture
+
+WADE is designed as one continuous weather data platform. Docker Compose starts the local services, Dagster orchestrates ingestion and dbt runs, MinIO stores bronze Parquet data, DuckDB holds the transformed analytics tables, and Streamlit/ML consume the curated gold layer.
+
+Architecture diagram: [docs/wade_architecture.drawio](docs/wade_architecture.drawio)
+
+![WADE architecture flow](docs/wade_architecture.png)
+
+```text
+.env config
+  -> Docker Compose runtime
+  -> Dagster jobs and schedules
+  -> Weather APIs + city registry
+  -> Python ingestion
+  -> MinIO / local bronze Parquet lake
+  -> dbt Bronze, Silver, Gold models
+  -> DuckDB analytics database
+  -> Streamlit dashboard + Isolation Forest anomaly scoring
+```
+
+Main runtime services:
+
+- `minio`: S3-compatible object storage for bronze weather Parquet files.
+- `createbuckets`: one-shot setup service that creates the `wade-lake` bucket.
+- `dagster`: orchestrates hourly current-weather refresh and manual historical backfill.
+- `dashboard`: serves the Streamlit dashboard from the DuckDB gold tables.
+
+The data flow starts with weather API collectors reading the Vietnam city registry. Ingestion writes partitioned Parquet files with source and ingestion metadata. dbt then reads those files into a bronze view, cleans and deduplicates records in silver, and creates gold tables for feature engineering, extreme events, and monthly climate deltas. The dashboard and ML scripts both read from this gold layer, so reporting and anomaly detection share the same feature definitions.
+
 ## DEMO
 
 ![WADE Weather Dashboard demo](docs/assets/dashboard-demo.png)

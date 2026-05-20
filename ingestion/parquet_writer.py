@@ -58,9 +58,10 @@ def write_minio_parquet(table: pa.Table, source: str, now: datetime) -> str:
                 content_type="application/vnd.apache.parquet",
             )
             break
-        except Exception:
+        except Exception as e:
             if attempt == max_attempts:
                 raise
+            print(f"MinIO write failed on attempt {attempt}: {e}")
             time.sleep(retry_delay_seconds)
 
     return f"s3://{bucket}/{key}"
