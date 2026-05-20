@@ -16,8 +16,6 @@ External APIs -> MinIO bucket -> DuckDB/dbt -> Dashboard / ML
 
 WADE is designed as one continuous weather data platform. Docker Compose starts the local services, Dagster orchestrates ingestion and dbt runs, MinIO stores bronze Parquet data, DuckDB holds the transformed analytics tables, and Streamlit/ML consume the curated gold layer.
 
-Architecture diagram: [docs/wade_architecture.drawio](docs/wade_architecture.drawio)
-
 ![WADE architecture flow](docs/wade_architecture.png)
 
 ```text
